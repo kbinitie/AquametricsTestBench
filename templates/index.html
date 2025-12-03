@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aqua Force Test Bench</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Aqua Force Test Bench</h1>
+        
+        <div class="description">
+            <p>
+                Upload a CSV dataset of water sensor readings to analyze and flag potential issues.
+                The system will check for low water levels, high turbidity, pH out of range, and temperature anomalies.
+            </p>
+        </div>
+        
+        <div class="upload-section">
+            <label for="csvFile">Select CSV File:</label>
+            <input type="file" id="csvFile" accept=".csv" />
+            <button id="analyzeBtn">Run Analysis</button>
+        </div>
+        
+        <div id="loading" class="loading" style="display: none;">
+            Analyzing data...
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <div id="results" style="display: none;">
+            <h2>Analysis Results</h2>
+            <div id="summary" class="summary"></div>
+            <div id="tableContainer"></div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
+
