@@ -1,17 +1,20 @@
 # AquametricsTestBench
 
-A simple full-stack demo application for an Aqua Force-style water monitoring test bench. This application allows users to upload CSV datasets of water sensor readings and automatically analyzes them to flag potential issues such as low water levels, high turbidity, pH out of range, and temperature anomalies.
+A simple full-stack demo application for an Aqua Force-style water monitoring test bench. This application can ingest live JSON readings from an ESP32 sensor node or replay saved JSON files, then visualize temperature, turbidity, and pH as a live dashboard.
 
 ## Features
 
 - **Simple Web Interface**: Single-page HTML interface for easy file upload
-- **CSV Analysis**: Upload CSV files with water sensor data for automated analysis
+- **Live Sensor Ingestion**: Accepts live `POST` requests from the ESP32 `sensor.ino` payload format
+- **JSON Analysis**: Upload JSON files matching the ESP32 `sensor.ino` payload for automated analysis
+- **Live Visualization**: Rolling charts and status cards for the latest readings
+- **Persistent Storage**: Live readings are archived in a local SQLite database for later post-processing
+- **Post-Processing Dashboard**: Compare multiple archives, inspect cross-source summaries, resample runs into time buckets, align runs side-by-side, and overlay a public reference dataset
 - **Flag Detection**: Automatically flags rows with:
-  - Low water level (< 20 cm) → `LOW_LEVEL`
-  - Overflow risk (> 200 cm) → `OVERFLOW_RISK`
   - High turbidity (> 5 NTU) → `HIGH_TURBIDITY`
   - pH out of range (< 6.5 or > 8.5) → `PH_OUT_OF_RANGE`
-  - Temperature out of range (< 0°C or > 35°C) → `TEMP_OUT_OF_RANGE`
+  - Ambient temperature out of range (< 0°C or > 35°C) → `AMBIENT_TEMP_OUT_OF_RANGE`
+  - Water temperature out of range (< 0°C or > 35°C) → `WATER_TEMP_OUT_OF_RANGE`
 - **Results Display**: Clean table view showing all data with flagged issues highlighted
 
 ## How to Set Up and Run Locally
@@ -49,7 +52,6 @@ pip install -r requirements.txt
 
 This will install:
 - Flask (web framework)
-- pandas (data analysis)
 
 ### Step 3: Run the Application
 
@@ -57,30 +59,74 @@ This will install:
 python app.py
 ```
 
-The application will start on `http://127.0.0.1:5000`
+The application will start on `http://0.0.0.0:5000`
 
 ### Step 4: Open in Browser
 
-Visit `http://127.0.0.1:5000` in your web browser.
+Visit `http://127.0.0.1:5000` in your web browser on the same machine.
 
-## CSV File Format
+To send live data from the ESP32, point `SERVER_URL` in `sensor.ino` to:
 
-The application expects CSV files with the following columns (case-sensitive):
+```text
+http://<your-computer-local-ip>:5000/ingest
+```
 
-- `timestamp` - Date/time of the reading (string or ISO format)
-- `sensor_id` - Identifier for the sensor (string or integer)
-- `water_level_cm` - Water level in centimeters (float)
+## JSON File Format
+
+The application expects JSON readings with the following fields (matching `sensor.ino`):
+
+- `timestamp_ms` - Millisecond timestamp from the ESP32 runtime
+- `ambient_temp_c` - Ambient temperature in Celsius (float)
+- `water_temp_c` - Water temperature in Celsius (float)
 - `turbidity_ntu` - Turbidity in NTU units (float)
 - `ph` - pH value (float)
-- `temperature_c` - Temperature in Celsius (float)
+- `sensor_id` - Optional identifier if you want to tag the source sensor
 
-### Example CSV:
+Supported upload shapes:
 
-```csv
-timestamp,sensor_id,water_level_cm,turbidity_ntu,ph,temperature_c
-2025-01-01T12:00:00Z,A1,18.5,2.1,7.0,22.0
-2025-01-01T12:05:00Z,A1,25.0,6.2,7.2,23.0
-2025-01-01T12:10:00Z,B2,150.0,3.5,5.8,18.0
+- A single JSON object
+- A JSON array of objects
+- NDJSON (one JSON object per line)
+
+## Live API Endpoints
+
+- `POST /ingest` accepts one reading object or an array of reading objects in the `sensor.ino` JSON format
+- `GET /api/live-readings` returns the current rolling window of readings and dashboard summary data
+- `POST /analyze` accepts a `.json` upload for offline replay and analysis
+
+## Post-Processing Dashboard
+
+- `GET /post-process` renders the archive comparison dashboard
+- `GET /api/post-process/sources` lists discovered SQLite archives in the workspace
+- `POST /api/post-process/analytics` returns aggregate summaries, cross-source comparisons, bucketed/aligned series, and optional reference data
+- `POST /api/post-process/export` returns an exportable JSON report for the current analytics view
+
+The current public reference integration uses the USGS Water Services instantaneous values endpoint for water temperature overlays.
+
+## Persistent Storage
+
+Live readings are stored in a SQLite database at `aquametrics.db` in the project root. The live dashboard reads the most recent rolling window from that database, while the full history remains available for later processing or export.
+
+### Example JSON:
+
+```json
+[
+  {
+    "timestamp_ms": 1000,
+    "ambient_temp_c": 22.4,
+    "water_temp_c": 19.8,
+    "turbidity_ntu": 2.1,
+    "ph": 7.0
+  },
+  {
+    "timestamp_ms": 6000,
+    "ambient_temp_c": 24.1,
+    "water_temp_c": 36.2,
+    "turbidity_ntu": 6.2,
+    "ph": 8.9,
+    "sensor_id": "A1"
+  }
+]
 ```
 
 ## Project Structure
@@ -100,14 +146,15 @@ AquametricsTestBench/
 
 ## How It Works
 
-1. **Frontend**: The user selects a CSV file and clicks "Run Analysis"
-2. **Backend**: Flask receives the file via POST request to `/analyze`
-3. **Analysis**: The CSV is parsed and each row is checked against flag rules
-4. **Response**: Results are returned as JSON with original data plus flags
-5. **Display**: The frontend renders a table showing all rows with flagged issues highlighted
+1. **Live ingest**: The ESP32 sends JSON readings to `POST /ingest`
+2. **Storage**: Flask persists readings into SQLite and serves a rolling window for the live dashboard
+3. **Analysis**: Each reading is checked against the configured flag rules
+4. **Dashboard**: The frontend polls `GET /api/live-readings` and renders charts plus alert chips
+5. **Post-process**: The archive dashboard can compare multiple databases, align runs, and export reports
+6. **Replay**: Saved JSON files can still be uploaded to `/analyze` for inspection
 
 ## Technology Stack
 
 - **Backend**: Python 3 + Flask
-- **Data Analysis**: pandas
+- **Data Analysis**: Python JSON parsing
 - **Frontend**: Vanilla HTML, CSS, and JavaScript (no frameworks or build tools)

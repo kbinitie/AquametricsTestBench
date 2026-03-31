@@ -1,15 +1,19 @@
-import csv
 import io
+import json
 from typing import List, Dict, Any
 
-# Simple thresholds for flagging issues
-LOW_LEVEL_THRESHOLD = 20.0        # cm
-HIGH_LEVEL_THRESHOLD = 200.0      # cm
 HIGH_TURBIDITY_THRESHOLD = 5.0    # NTU
 PH_MIN = 6.5
 PH_MAX = 8.5
 TEMP_MIN = 0.0                    # °C
 TEMP_MAX = 35.0                   # °C
+REQUIRED_SENSOR_FIELDS = [
+    "timestamp_ms",
+    "ambient_temp_c",
+    "water_temp_c",
+    "turbidity_ntu",
+    "ph",
+]
 
 
 def _to_float(value, field_name: str):
@@ -20,81 +24,70 @@ def _to_float(value, field_name: str):
         raise ValueError(f"Invalid numeric value for {field_name}: {value!r}")
 
 
-def analyze_readings(file_obj) -> List[Dict[str, Any]]:
+def _coerce_json_payload(text: str) -> List[Dict[str, Any]]:
     """
-    Analyze water sensor readings from a CSV file-like object.
+    Parse supported JSON upload formats into a list of reading dicts.
 
-    Expected columns:
-      - timestamp
-      - sensor_id
-      - water_level_cm
-      - turbidity_ntu
-      - ph
-      - temperature_c
-
-    `file_obj` can be a Werkzeug FileStorage (from Flask) or any file-like with .read()/.readline().
-    Returns a list of dicts with the original data plus a 'flags' list.
+    Supported formats:
+    - a single JSON object
+    - a JSON array of objects
+    - newline-delimited JSON (one object per line)
     """
-    # If we get a Flask FileStorage object, use its underlying stream
-    stream = getattr(file_obj, "stream", file_obj)
+    stripped = text.strip()
+    if not stripped:
+        raise ValueError("JSON file is empty.")
 
-    # Ensure we start from the beginning
     try:
-        stream.seek(0)
-    except (AttributeError, OSError):
-        # If we can't seek, wrap in a buffer
-        stream = io.BytesIO(stream.read())
-        stream.seek(0)
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        readings: List[Dict[str, Any]] = []
+        for line_number, line in enumerate(stripped.splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid JSON on line {line_number}: {exc.msg}") from exc
+            if not isinstance(item, dict):
+                raise ValueError(f"Each JSON reading must be an object. Line {line_number} was {type(item).__name__}.")
+            readings.append(item)
+        if not readings:
+            raise ValueError("JSON file is empty.")
+        return readings
 
-    # Wrap bytes stream in a text wrapper if needed
-    if isinstance(stream.read(0), bytes):  # type: ignore[arg-type]
-        stream.seek(0)
-        text_stream = io.TextIOWrapper(stream, encoding="utf-8", newline="")
-    else:
-        stream.seek(0)
-        text_stream = stream
+    if isinstance(parsed, dict):
+        return [parsed]
+    if isinstance(parsed, list):
+        if not all(isinstance(item, dict) for item in parsed):
+            raise ValueError("JSON array must contain only objects.")
+        return parsed
 
-    reader = csv.DictReader(text_stream)
+    raise ValueError("JSON upload must be an object, an array of objects, or NDJSON.")
 
-    required_columns = [
-        "timestamp",
-        "sensor_id",
-        "water_level_cm",
-        "turbidity_ntu",
-        "ph",
-        "temperature_c",
-    ]
 
-    # Make sure all required columns exist
-    if reader.fieldnames is None:
-        raise ValueError("CSV has no header row.")
-    missing = [col for col in required_columns if col not in reader.fieldnames]
-    if missing:
-        raise ValueError(f"Missing required columns: {', '.join(missing)}")
-
+def analyze_payload(payload: Any) -> List[Dict[str, Any]]:
+    """Analyze one or more sensor readings already loaded in memory."""
+    readings = payload if isinstance(payload, list) else [payload]
     results: List[Dict[str, Any]] = []
 
-    for row in reader:
+    for index, row in enumerate(readings, start=1):
+        if not isinstance(row, dict):
+            raise ValueError(f"Reading {index} is not a JSON object.")
+
         flags = []
-
-        # Parse numeric fields with validation
-        try:
-            water_level = _to_float(row.get("water_level_cm"), "water_level_cm")
-            turbidity = _to_float(row.get("turbidity_ntu"), "turbidity_ntu")
-            ph = _to_float(row.get("ph"), "ph")
-            temperature = _to_float(row.get("temperature_c"), "temperature_c")
-        except ValueError as e:
-            # If a row is bad, we can either skip it or mark it as invalid.
-            # Here we mark it with a flag and keep it.
-            flags.append(f"INVALID_ROW: {e}")
-            water_level = turbidity = ph = temperature = None  # type: ignore[assignment]
-
-        # Apply flag rules only if we got valid numbers
-        if water_level is not None:
-            if water_level < LOW_LEVEL_THRESHOLD:
-                flags.append("LOW_LEVEL")
-            if water_level > HIGH_LEVEL_THRESHOLD:
-                flags.append("OVERFLOW_RISK")
+        missing = [col for col in REQUIRED_SENSOR_FIELDS if col not in row]
+        if missing:
+            flags.append(f"INVALID_READING: Missing required fields: {', '.join(missing)}")
+            ambient_temp = water_temp = turbidity = ph = None  # type: ignore[assignment]
+        else:
+            try:
+                ambient_temp = _to_float(row.get("ambient_temp_c"), "ambient_temp_c")
+                water_temp = _to_float(row.get("water_temp_c"), "water_temp_c")
+                turbidity = _to_float(row.get("turbidity_ntu"), "turbidity_ntu")
+                ph = _to_float(row.get("ph"), "ph")
+            except ValueError as e:
+                flags.append(f"INVALID_READING: {e}")
+                ambient_temp = water_temp = turbidity = ph = None  # type: ignore[assignment]
 
         if turbidity is not None and turbidity > HIGH_TURBIDITY_THRESHOLD:
             flags.append("HIGH_TURBIDITY")
@@ -102,20 +95,46 @@ def analyze_readings(file_obj) -> List[Dict[str, Any]]:
         if ph is not None and (ph < PH_MIN or ph > PH_MAX):
             flags.append("PH_OUT_OF_RANGE")
 
-        if temperature is not None:
-            if temperature < TEMP_MIN or temperature > TEMP_MAX:
-                flags.append("TEMP_OUT_OF_RANGE")
+        if ambient_temp is not None and (ambient_temp < TEMP_MIN or ambient_temp > TEMP_MAX):
+            flags.append("AMBIENT_TEMP_OUT_OF_RANGE")
 
-        result_row = {
-            "timestamp": row.get("timestamp", ""),
+        if water_temp is not None and (water_temp < TEMP_MIN or water_temp > TEMP_MAX):
+            flags.append("WATER_TEMP_OUT_OF_RANGE")
+
+        results.append({
+            "timestamp_ms": row.get("timestamp_ms", ""),
             "sensor_id": row.get("sensor_id", ""),
-            "water_level_cm": row.get("water_level_cm", ""),
+            "ambient_temp_c": row.get("ambient_temp_c", ""),
+            "water_temp_c": row.get("water_temp_c", ""),
             "turbidity_ntu": row.get("turbidity_ntu", ""),
             "ph": row.get("ph", ""),
-            "temperature_c": row.get("temperature_c", ""),
             "flags": flags,
-        }
-
-        results.append(result_row)
+        })
 
     return results
+
+
+def analyze_readings(file_obj) -> List[Dict[str, Any]]:
+    """
+    Analyze sensor readings from a JSON file-like object.
+
+    `file_obj` can be a Werkzeug FileStorage (from Flask) or any file-like with .read()/.readline().
+    Returns a list of dicts with the original data plus a 'flags' list.
+    """
+    stream = getattr(file_obj, "stream", file_obj)
+
+    try:
+        stream.seek(0)
+    except (AttributeError, OSError):
+        stream = io.BytesIO(stream.read())
+        stream.seek(0)
+
+    if isinstance(stream.read(0), bytes):  # type: ignore[arg-type]
+        stream.seek(0)
+        text_stream = io.TextIOWrapper(stream, encoding="utf-8", newline="")
+    else:
+        stream.seek(0)
+        text_stream = stream
+
+    readings = _coerce_json_payload(text_stream.read())
+    return analyze_payload(readings)

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aqua Force Post-Processing</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="page-shell">
+        <div class="container analytics-shell">
+            <section class="hero analytics-hero">
+                <div>
+                    <p class="eyebrow">Post-Processing Lab</p>
+                    <h1>Archive Comparison Dashboard</h1>
+                    <p class="hero-copy">
+                        Compare multiple persisted test bench archives, inspect aggregate behavior, and
+                        overlay a public reference series for water temperature.
+                    </p>
+                </div>
+                <div class="hero-status">
+                    <div class="status-pill">
+                        <span class="status-dot is-live"></span>
+                        <span>Analytics workspace</span>
+                    </div>
+                    <p>Use this view for cross-run comparisons and post-processed reporting.</p>
+                </div>
+            </section>
+
+            <section class="control-panel">
+                <div class="section-heading">
+                    <h2>Data Sources</h2>
+                    <p>Select one or more SQLite archives to compare.</p>
+                </div>
+                <div id="sourceList" class="source-list"></div>
+
+                <div class="control-grid">
+                    <label class="field-group">
+                        <span>Readings per source</span>
+                        <input id="limitInput" type="number" min="10" max="2000" value="240">
+                    </label>
+                    <label class="field-group">
+                        <span>Bucket size (minutes)</span>
+                        <input id="bucketMinutesInput" type="number" min="1" max="1440" value="5">
+                    </label>
+                    <label class="field-group">
+                        <span>Alignment mode</span>
+                        <select id="alignmentModeInput">
+                            <option value="elapsed" selected>Elapsed run time</option>
+                            <option value="timestamp">Absolute timestamp</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="control-grid">
+                    <label class="field-group">
+                        <span>Start timestamp (ms)</span>
+                        <input id="startTimestampInput" type="number" placeholder="Optional">
+                    </label>
+                    <label class="field-group">
+                        <span>End timestamp (ms)</span>
+                        <input id="endTimestampInput" type="number" placeholder="Optional">
+                    </label>
+                    <div class="field-group helper-card">
+                        <span>Comparison mode</span>
+                        <p>Resampled buckets make cross-run comparisons easier even when runs started at different times.</p>
+                    </div>
+                </div>
+
+                <div class="section-heading compact">
+                    <h2>Public Reference</h2>
+                    <p>Optional USGS water temperature overlay.</p>
+                </div>
+                <div class="control-grid">
+                    <label class="field-group checkbox-group">
+                        <span>Enable reference</span>
+                        <input id="referenceEnabled" type="checkbox">
+                    </label>
+                    <label class="field-group">
+                        <span>USGS site</span>
+                        <input id="referenceSite" type="text" placeholder="e.g. 01646500">
+                    </label>
+                    <label class="field-group">
+                        <span>USGS period</span>
+                        <input id="referencePeriod" type="text" value="P7D">
+                    </label>
+                </div>
+
+                <div class="button-row">
+                    <button id="runAnalyticsBtn">Run Comparisons</button>
+                    <button id="exportReportBtn" type="button">Export Report</button>
+                    <a class="text-link" href="/">Back to live dashboard</a>
+                </div>
+            </section>
+
+            <div id="analyticsLoading" class="loading" style="display: none;">Building analytics...</div>
+            <div id="analyticsError" class="error" style="display: none;"></div>
+
+            <section class="metrics-grid analytics-metrics">
+                <article class="metric-card">
+                    <p class="metric-label">Sources compared</p>
+                    <p class="metric-value" id="sourceCount">0</p>
+                </article>
+                <article class="metric-card">
+                    <p class="metric-label">Readings in window</p>
+                    <p class="metric-value" id="windowReadingCount">0</p>
+                </article>
+                <article class="metric-card">
+                    <p class="metric-label">Flagged in window</p>
+                    <p class="metric-value" id="windowFlaggedCount">0</p>
+                </article>
+                <article class="metric-card">
+                    <p class="metric-label">Latest timestamp</p>
+                    <p class="metric-value metric-small" id="latestTimestamp">--</p>
+                </article>
+            </section>
+
+            <section class="charts-grid analytics-charts">
+                <article class="chart-card">
+                    <div class="section-heading">
+                        <h2>Water Temperature Comparison</h2>
+                        <p>All selected archives plus optional public reference.</p>
+                    </div>
+                    <div id="waterComparisonChart" class="chart-surface"></div>
+                </article>
+                <article class="chart-card">
+                    <div class="section-heading">
+                        <h2>Turbidity Comparison</h2>
+                        <p>Cross-source rolling comparison.</p>
+                    </div>
+                    <div id="turbidityComparisonChart" class="chart-surface"></div>
+                </article>
+            </section>
+
+            <section class="analytics-sections">
+                <article class="results-panel">
+                    <div class="section-heading">
+                        <h2>Source Summaries</h2>
+                        <p>Per-database averages and counts for the selected window.</p>
+                    </div>
+                    <div id="sourceSummaryList" class="reading-list"></div>
+                </article>
+
+                <article class="results-panel">
+                    <div class="section-heading">
+                        <h2>Comparison Table</h2>
+                        <p>Deltas are measured against the first selected source.</p>
+                    </div>
+                    <div id="comparisonTable" class="comparison-table"></div>
+                </article>
+            </section>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='postprocess.js') }}"></script>
+</body>
+</html>
