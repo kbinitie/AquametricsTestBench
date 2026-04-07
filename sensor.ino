@@ -2,6 +2,7 @@
 #include <WebServer.h>
 #include <Arduino.h>
 #include <DHT.h>
+#include <HTTPClient.h>
 
 // ==============================
 // Pin assignments
@@ -227,6 +228,7 @@ void sampleSensors() {
   hasSample = true;
 
   Serial.println("DATA: " + latestPayload);
+  sendToServer(latestPayload);
 }
 
 // ==============================
@@ -243,6 +245,19 @@ void setup() {
 
   setupAccessPoint();
   setupServer();
+}
+
+void sendToServer(String payload) {
+  HTTPClient http;
+  http.begin("http://127.0.0.1:5000/ingest"); 
+  http.addHeader("Content-Type", "application/json");
+
+  int httpResponseCode = http.POST(payload);
+
+  Serial.print("POST response: ");
+  Serial.println(httpResponseCode);
+
+  http.end();
 }
 
 // ==============================
