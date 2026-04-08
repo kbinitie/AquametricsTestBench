@@ -33,12 +33,14 @@ python -m venv venv
 ```
 
 On Windows (Command Prompt):
+
 ```cmd
 python -m venv venv
 venv\Scripts\activate.bat
 ```
 
 On macOS/Linux:
+
 ```bash
 python3 -m venv venv
 source venv/bin/activate
@@ -51,9 +53,16 @@ pip install -r requirements.txt
 ```
 
 This will install:
+
 - Flask (web framework)
 
 ### Step 3: Run the Application
+
+- First Plug in the sensor to your computer's USB-C port.
+
+- Connect to the sensor's WiFi "AquametricsTestBench". The password is aquametrics123.
+
+- After connecting, run the following command in the virtual environment. This should be done immediately after connecting as the sensor ignores requests and prints to Serial monitor instead for debugging purposes.
 
 ```bash
 python app.py

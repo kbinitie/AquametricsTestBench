@@ -249,7 +249,9 @@ void setup() {
 
 void sendToServer(String payload) {
   HTTPClient http;
-  http.begin("http://127.0.0.1:5000/ingest"); 
+  http.setConnectTimeout(3000);
+  http.setTimeout(5000);
+  http.begin("http://192.168.4.2:5000/ingest");
   http.addHeader("Content-Type", "application/json");
 
   int httpResponseCode = http.POST(payload);

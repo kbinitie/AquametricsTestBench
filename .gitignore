@@ -7,3 +7,6 @@ venv/
 
 # Runtime data
 *.db
+
+# Test script
+test_sensor_interface.py
