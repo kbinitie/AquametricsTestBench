@@ -43,7 +43,7 @@ const float WATER_TEMP_OFFSET_V = 0.5;
 const float WATER_TEMP_C_PER_VOLT = 100.0;
 
 // pH defaults assume a probe conditioned near 2.5V at neutral pH.
-const float PH_NEUTRAL_VOLTAGE = 2.5;
+const float PH_NEUTRAL_VOLTAGE = 1.65;
 const float PH_PER_VOLT = -5.56;
 
 String latestPayload = "{}";
