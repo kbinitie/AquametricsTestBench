@@ -31,7 +31,7 @@ IPAddress apSubnet(255, 255, 255, 0);
 
 WebServer server(80);
 
-const unsigned long READ_INTERVAL_MS = 10000;
+const unsigned long READ_INTERVAL_MS = 1000;
 unsigned long lastReadTime = 0;
 
 const float ADC_MAX = 4095.0;
